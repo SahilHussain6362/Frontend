@@ -6,6 +6,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: process.env.PORT || 5173,
+
+    allowedHosts: [
+      "spygamefrontend.onrender.com"
+    ],
+
     proxy: {
       "/api": {
         target: "http://localhost:3000",
