@@ -13,11 +13,11 @@ export default defineConfig({
 
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: "https://spygamebackend-4z6x.onrender.com",
         changeOrigin: true,
       },
       "/socket.io": {
-        target: "http://localhost:3000",
+        target: "https://spygamebackend-4z6x.onrender.com",
         ws: true,
       },
     },
