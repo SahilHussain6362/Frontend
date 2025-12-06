@@ -15,7 +15,15 @@ export const useGame = () => {
 
 export const GameProvider = ({ children }) => {
   const { user } = useAuth();
-  const [room, setRoom] = useState(null);
+  // Initialize room state from localStorage so UI doesn't ask again on navigation/refresh
+  const [room, setRoom] = useState(() => {
+    try {
+      const saved = localStorage.getItem('room');
+      return saved ? JSON.parse(saved) : null;
+    } catch (err) {
+      return null;
+    }
+  });
   const [game, setGame] = useState(null);
   const [messages, setMessages] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
@@ -27,6 +35,11 @@ export const GameProvider = ({ children }) => {
     socketService.on('room_joined', (data) => {
       if (data.room) {
         setRoom(data.room);
+        try {
+          localStorage.setItem('room', JSON.stringify(data.room));
+        } catch (err) {
+          console.error('Failed to persist room to localStorage', err);
+        }
         audioService.play('click');
         console.log('Room joined:', data.room.roomCode);
       }
@@ -35,13 +48,34 @@ export const GameProvider = ({ children }) => {
     socketService.on('room_updated', (data) => {
       if (data.room) {
         setRoom(data.room);
-        console.log('Room updated:', data.room.roomCode);
+        console.log('Room updated:', data.room.roomCode, 'Players:', data.room.players.length);
+      }
+    });
+
+    // Handle reconnection - restore room state
+    socketService.on('room_status', (data) => {
+      if (data.inRoom && data.room) {
+        setRoom(data.room);
+        try {
+          localStorage.setItem('room', JSON.stringify(data.room));
+        } catch (err) {
+          console.error('Failed to persist room to localStorage', err);
+        }
+        console.log('Room restored after reconnection:', data.room.roomCode);
+      } else {
+        // Clear persisted room if server says user is not in a room
+        localStorage.removeItem('room');
       }
     });
 
     socketService.on('room_left', (data) => {
       setRoom(null);
       setGame(null);
+      try {
+        localStorage.removeItem('room');
+      } catch (err) {
+        console.error('Failed to remove room from localStorage', err);
+      }
       console.log('Room left');
     });
 
@@ -191,6 +225,7 @@ export const GameProvider = ({ children }) => {
       socketService.off('room_updated');
       socketService.off('room_left');
       socketService.off('room_error');
+      socketService.off('room_status');
       socketService.off('player_joined');
       socketService.off('player_left');
       socketService.off('game_start');
@@ -235,7 +270,7 @@ export const GameProvider = ({ children }) => {
             socketService.emit('join_room', { roomCode });
           }
         }, 100);
-        
+
         // Timeout after 3 seconds
         setTimeout(() => {
           clearInterval(connectInterval);
@@ -248,9 +283,20 @@ export const GameProvider = ({ children }) => {
       }
       return;
     }
-    
+
     console.log('Joining room via socket:', roomCode);
     socketService.emit('join_room', { roomCode });
+  };
+
+  // When leaving room locally, clear storage too
+  const leaveRoomLocal = () => {
+    try {
+      localStorage.removeItem('room');
+    } catch (err) {
+      console.error('Failed to remove room from localStorage', err);
+    }
+    setRoom(null);
+    setGame(null);
   };
 
   const leaveRoom = () => {
@@ -260,8 +306,14 @@ export const GameProvider = ({ children }) => {
   };
 
   const toggleReady = () => {
-    if (room) {
-      const currentPlayer = room.players.find((p) => p.userId === user.userId);
+    if (room && user) {
+      const currentUserId = user._id?.toString() || user.userId?.toString();
+      const currentPlayer = room.players.find((p) => {
+        const playerUserId = typeof p.userId === 'object'
+          ? p.userId._id?.toString() || p.userId.userId?.toString()
+          : p.userId?.toString();
+        return playerUserId === currentUserId;
+      });
       socketService.emit('player_ready', {
         roomCode: room.roomCode,
         isReady: !currentPlayer?.isReady,
@@ -274,8 +326,8 @@ export const GameProvider = ({ children }) => {
       // If no category provided, select a random one
       const categories = ['food', 'animals', 'places', 'movies', 'jobs', 'sports', 'countries', 'objects'];
       const selectedCategory = category || categories[Math.floor(Math.random() * categories.length)];
-      
-      socketService.emit('game_start', { 
+
+      socketService.emit('game_start', {
         roomCode: room.roomCode,
         category: selectedCategory
       });
@@ -329,6 +381,24 @@ export const GameProvider = ({ children }) => {
     setRoom(roomData);
   };
 
+  const updateAvatar = (avatar) => {
+    if (room) {
+      socketService.emit('update_avatar', {
+        roomCode: room.roomCode,
+        avatar,
+      });
+    }
+  };
+
+  const updateName = (username) => {
+    if (room) {
+      socketService.emit('update_name', {
+        roomCode: room.roomCode,
+        username,
+      });
+    }
+  };
+
   const value = {
     room,
     game,
@@ -336,6 +406,7 @@ export const GameProvider = ({ children }) => {
     typingUsers,
     joinRoom,
     leaveRoom,
+    leaveRoomLocal,
     toggleReady,
     startGame,
     submitClue,
@@ -345,6 +416,8 @@ export const GameProvider = ({ children }) => {
     sendTyping,
     stopTyping,
     setRoomState,
+    updateAvatar,
+    updateName,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
