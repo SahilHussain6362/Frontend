@@ -40,10 +40,22 @@ class SocketService {
 
       this.socket.on('connect', () => {
         console.log('Socket connected successfully');
+        // Check if user was in a room before reconnection
+        if (token) {
+          this.socket.emit('check_room');
+        }
       });
 
       this.socket.on('disconnect', (reason) => {
         console.log('Socket disconnected:', reason);
+      });
+
+      // Handle reconnection
+      this.socket.on('reconnect', () => {
+        console.log('Socket reconnected');
+        if (token) {
+          this.socket.emit('check_room');
+        }
       });
     } catch (error) {
       console.error('SocketService: Error creating socket connection:', error);

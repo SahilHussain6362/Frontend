@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Guest from './pages/Guest';
+import Dashboard from './pages/Dashboard';
 import Lobby from './pages/Lobby';
 import Game from './pages/Game';
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -20,6 +21,14 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/guest" element={<Guest />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/lobby"
               element={

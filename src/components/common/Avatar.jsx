@@ -2,7 +2,21 @@ import { useAuth } from '../../contexts/AuthContext';
 
 export default function Avatar({ user, size = 'md', className = '' }) {
   const { user: currentUser } = useAuth();
-  const isCurrentUser = user?.userId === currentUser?.userId;
+  
+  // Handle both direct user object and populated userId reference
+  const getUserData = () => {
+    if (!user) return null;
+    // If userId is populated (object), use it; otherwise use user directly
+    if (user.userId && typeof user.userId === 'object') {
+      return user.userId;
+    }
+    return user;
+  };
+
+  const userData = getUserData();
+  const userId = userData?._id?.toString() || userData?.userId?.toString() || user?.userId?.toString() || user?._id?.toString();
+  const currentUserId = currentUser?._id?.toString() || currentUser?.userId?.toString();
+  const isCurrentUser = userId === currentUserId;
 
   const sizes = {
     sm: 'w-8 h-8',
@@ -11,8 +25,8 @@ export default function Avatar({ user, size = 'md', className = '' }) {
     xl: 'w-24 h-24',
   };
 
-  const avatarUrl = user?.avatar || '/assets/images/Avatar/Boy_avatar_1.png';
-  const displayName = user?.username || 'User';
+  const avatarUrl = userData?.avatar || user?.avatar || '/assets/images/Avatar/Boy_avatar_1.png';
+  const displayName = userData?.username || user?.username || 'User';
 
   return (
     <div className={`relative ${sizes[size]} ${className}`}>

@@ -19,7 +19,7 @@ export default function Login() {
     
     if (result.success) {
       toast.success('Login successful!');
-      navigate('/lobby');
+      navigate('/dashboard');
     } else {
       toast.error(result.error || 'Login failed');
     }

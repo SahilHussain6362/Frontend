@@ -23,6 +23,18 @@ export default function Lobby() {
     }
   }, [room, navigate]);
 
+  // Check for room restoration on mount
+  useEffect(() => {
+    if (user && !room) {
+      // Wait a bit for socket to connect and check room
+      const timer = setTimeout(() => {
+        // Room restoration is handled by socket check_room event
+        // This is just a fallback to ensure we check
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, room]);
+
   const handleCreateRoom = async () => {
     setCreating(true);
     try {
@@ -106,7 +118,13 @@ export default function Lobby() {
   };
 
   const canStart = room && room.players.length >= 4 && room.players.every((p) => p.isReady);
-  const isHost = room && room.host?.userId === user?.userId;
+  const isHost = room && (() => {
+    const hostUserId = typeof room.host === 'object'
+      ? room.host._id?.toString() || room.host.userId?.toString()
+      : room.host?.toString();
+    const currentUserId = user?._id?.toString() || user?.userId?.toString();
+    return hostUserId === currentUserId;
+  })();
 
   if (room) {
     return (
@@ -187,7 +205,15 @@ export default function Lobby() {
                       {player.isReady && (
                         <p className="text-xs text-neon-green font-bold">✓ Ready</p>
                       )}
-                      {player.userId === room.host?.userId && (
+                      {(() => {
+                        const playerUserId = typeof player.userId === 'object' 
+                          ? player.userId._id?.toString() || player.userId.userId?.toString()
+                          : player.userId?.toString();
+                        const hostUserId = typeof room.host === 'object'
+                          ? room.host._id?.toString() || room.host.userId?.toString()
+                          : room.host?.toString();
+                        return playerUserId === hostUserId;
+                      })() && (
                         <p className="text-xs text-neon-cyan font-bold mt-1">👑 Host</p>
                       )}
                     </motion.div>
@@ -200,13 +226,29 @@ export default function Lobby() {
             <div className="flex gap-4 justify-center pb-4">
               <Button
                 size="lg"
-                variant={room.players.find((p) => p.userId === user?.userId)?.isReady ? 'secondary' : 'primary'}
+                variant={(() => {
+                  const currentUserId = user?._id?.toString() || user?.userId?.toString();
+                  const player = room.players.find((p) => {
+                    const playerUserId = typeof p.userId === 'object'
+                      ? p.userId._id?.toString() || p.userId.userId?.toString()
+                      : p.userId?.toString();
+                    return playerUserId === currentUserId;
+                  });
+                  return player?.isReady ? 'secondary' : 'primary';
+                })()}
                 onClick={toggleReady}
                 className="min-w-[180px]"
               >
-                {room.players.find((p) => p.userId === user?.userId)?.isReady
-                  ? 'NOT READY'
-                  : 'READY'}
+                {(() => {
+                  const currentUserId = user?._id?.toString() || user?.userId?.toString();
+                  const player = room.players.find((p) => {
+                    const playerUserId = typeof p.userId === 'object'
+                      ? p.userId._id?.toString() || p.userId.userId?.toString()
+                      : p.userId?.toString();
+                    return playerUserId === currentUserId;
+                  });
+                  return player?.isReady ? 'NOT READY' : 'READY';
+                })()}
               </Button>
               {isHost && (
                 <Button

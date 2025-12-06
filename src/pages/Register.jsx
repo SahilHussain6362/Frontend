@@ -32,7 +32,7 @@ export default function Register() {
     
     if (result.success) {
       toast.success('Registration successful!');
-      navigate('/lobby');
+      navigate('/dashboard');
     } else {
       toast.error(result.error || 'Registration failed');
     }
