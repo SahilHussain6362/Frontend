@@ -23,19 +23,27 @@ export const GameProvider = ({ children }) => {
   useEffect(() => {
     if (!user) return;
 
+    // Ensure socket is connected
+    const token = localStorage.getItem('token');
+    if (token && !socketService.connected) {
+      socketService.connect(token);
+    }
+
     // Room events
     socketService.on('room_joined', (data) => {
       if (data.room) {
         setRoom(data.room);
         audioService.play('click');
-        console.log('Room joined:', data.room.roomCode);
+        console.log('Room joined:', data.room.roomCode, 'Players:', data.room.players?.length);
       }
     });
 
     socketService.on('room_updated', (data) => {
       if (data.room) {
+        // Always update room state when we receive room_updated event
+        // This ensures all players see real-time updates
         setRoom(data.room);
-        console.log('Room updated:', data.room.roomCode);
+        console.log('Room updated:', data.room.roomCode, 'Players:', data.room.players?.length);
       }
     });
 
@@ -58,12 +66,29 @@ export const GameProvider = ({ children }) => {
 
     socketService.on('player_joined', (data) => {
       console.log('Player joined:', data.username);
-      // Room will be updated via room_updated event
+      // Update room state immediately if room data is provided
+      // This ensures all players see the new player instantly
+      if (data.room) {
+        setRoom(data.room);
+        console.log('Room updated after player joined:', data.room.roomCode, 'Players:', data.room.players?.length);
+      } else {
+        // If room data not provided, the backend should emit room_updated
+        // But we log a warning in case it doesn't
+        console.warn('player_joined event received without room data - waiting for room_updated event');
+      }
     });
 
     socketService.on('player_left', (data) => {
       console.log('Player left:', data.username);
-      // Room will be updated via room_updated event
+      // Update room state immediately if room data is provided
+      // This ensures all players see the player removal instantly
+      if (data.room) {
+        setRoom(data.room);
+        console.log('Room updated after player left:', data.room.roomCode, 'Players:', data.room.players?.length);
+      } else {
+        // If room data not provided, the backend should emit room_updated
+        console.warn('player_left event received without room data - waiting for room_updated event');
+      }
     });
 
     // Game events
