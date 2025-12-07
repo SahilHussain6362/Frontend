@@ -27,7 +27,7 @@ export default function Guest() {
     
     if (result.success) {
       toast.success('Welcome, guest!');
-      navigate('/lobby');
+      navigate('/dashboard');
     } else {
       toast.error(result.error || 'Guest login failed');
     }

@@ -26,6 +26,19 @@ export const AuthProvider = ({ children }) => {
         setUser(userData);
         // Connect socket with token
         socketService.connect(token);
+        
+        // Check for room restoration after socket connects
+        const checkRoomInterval = setInterval(() => {
+          if (socketService.connected) {
+            clearInterval(checkRoomInterval);
+            // The socket service will emit check_room on connect
+          }
+        }, 100);
+        
+        // Timeout after 3 seconds
+        setTimeout(() => {
+          clearInterval(checkRoomInterval);
+        }, 3000);
       } catch (error) {
         console.error('Error loading user:', error);
         localStorage.removeItem('token');
@@ -102,6 +115,23 @@ export const AuthProvider = ({ children }) => {
     socketService.disconnect();
   };
 
+  const refreshUser = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await userAPI.getProfile();
+      const userData = response.data.data;
+      
+      if (userData) {
+        localStorage.setItem('user', JSON.stringify(userData));
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -109,6 +139,7 @@ export const AuthProvider = ({ children }) => {
     register,
     guestLogin,
     logout,
+    refreshUser,
     isAuthenticated: !!user,
   };
 

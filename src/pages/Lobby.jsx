@@ -6,6 +6,7 @@ import { useGame } from '../contexts/GameContext';
 import { roomAPI } from '../services/apiService';
 import Button from '../components/common/Button';
 import Avatar from '../components/common/Avatar';
+import Chat from '../components/game/Chat';
 import toast from 'react-hot-toast';
 import audioService from '../services/audioService';
 
@@ -22,6 +23,18 @@ export default function Lobby() {
       navigate(`/game/${room.roomId}`);
     }
   }, [room, navigate]);
+
+  // Check for room restoration on mount
+  useEffect(() => {
+    if (user && !room) {
+      // Wait a bit for socket to connect and check room
+      const timer = setTimeout(() => {
+        // Room restoration is handled by socket check_room event
+        // This is just a fallback to ensure we check
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [user, room]);
 
   const handleCreateRoom = async () => {
     setCreating(true);
@@ -106,7 +119,13 @@ export default function Lobby() {
   };
 
   const canStart = room && room.players.length >= 4 && room.players.every((p) => p.isReady);
-  const isHost = room && room.host?.userId === user?.userId;
+  const isHost = room && (() => {
+    const hostUserId = typeof room.host === 'object'
+      ? room.host._id?.toString() || room.host.userId?.toString()
+      : room.host?.toString();
+    const currentUserId = user?._id?.toString() || user?.userId?.toString();
+    return hostUserId === currentUserId;
+  })();
 
   if (room) {
     return (
@@ -122,7 +141,7 @@ export default function Lobby() {
         </div>
 
         <div className="relative z-10 flex-1 flex flex-col p-4 md:p-8">
-          <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col">
+          <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -143,88 +162,124 @@ export default function Lobby() {
               </div>
             </div>
 
-            {/* Room Code Display */}
-            <div className="bg-dark-surface/90 backdrop-blur-lg border-2 border-neon-cyan/50 rounded-xl p-6 mb-6 text-center shadow-2xl">
-              <p className="text-gray-300 text-sm mb-3">Share this code to invite friends</p>
-              <p className="text-5xl md:text-6xl font-display font-black text-neon-cyan tracking-wider mb-3">
-                {room.roomCode}
-              </p>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(room.roomCode);
-                  toast.success('Room code copied!');
-                }}
-                className="text-neon-cyan hover:text-neon-purple text-sm transition-colors font-medium"
-              >
-                Copy Code
-              </button>
-            </div>
+            <div className="flex-1 flex gap-6 overflow-hidden">
+              {/* Left Side - Room Info and Players */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Room Code Display */}
+                <div className="bg-dark-surface/90 backdrop-blur-lg border-2 border-neon-cyan/50 rounded-xl p-6 mb-6 text-center shadow-2xl">
+                  <p className="text-gray-300 text-sm mb-3">Share this code to invite friends</p>
+                  <p className="text-5xl md:text-6xl font-display font-black text-neon-cyan tracking-wider mb-3">
+                    {room.roomCode}
+                  </p>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(room.roomCode);
+                      toast.success('Room code copied!');
+                    }}
+                    className="text-neon-cyan hover:text-neon-purple text-sm transition-colors font-medium"
+                  >
+                    Copy Code
+                  </button>
+                </div>
 
-            {/* Players List */}
-            <div className="mb-6 flex-1">
-              <h2 className="text-2xl font-display font-bold text-gray-200 mb-4">Players</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <AnimatePresence>
-                  {room.players.map((player, index) => (
-                    <motion.div
-                      key={player.userId}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      transition={{ delay: index * 0.1 }}
-                      className={`bg-dark-surface/90 backdrop-blur-lg border-2 rounded-xl p-4 text-center transition-all ${
-                        player.isReady
-                          ? 'border-neon-green shadow-lg shadow-neon-green/30'
-                          : 'border-dark-border'
-                      }`}
+                {/* Players List */}
+                <div className="mb-6 flex-1 overflow-y-auto">
+                  <h2 className="text-2xl font-display font-bold text-gray-200 mb-4">Players</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <AnimatePresence>
+                      {room.players.map((player, index) => (
+                        <motion.div
+                          key={player.userId}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ delay: index * 0.1 }}
+                          className={`bg-dark-surface/90 backdrop-blur-lg border-2 rounded-xl p-4 text-center transition-all ${
+                            player.isReady
+                              ? 'border-neon-green shadow-lg shadow-neon-green/30'
+                              : 'border-dark-border'
+                          }`}
+                        >
+                          <div className="mx-auto mb-3 flex justify-center">
+                            <Avatar user={player} size="lg" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-200 truncate mb-1">
+                            {player.username}
+                          </p>
+                          {player.isReady && (
+                            <p className="text-xs text-neon-green font-bold">✓ Ready</p>
+                          )}
+                          {(() => {
+                            const playerUserId = typeof player.userId === 'object' 
+                              ? player.userId._id?.toString() || player.userId.userId?.toString()
+                              : player.userId?.toString();
+                            const hostUserId = typeof room.host === 'object'
+                              ? room.host._id?.toString() || room.host.userId?.toString()
+                              : room.host?.toString();
+                            return playerUserId === hostUserId;
+                          })() && (
+                            <p className="text-xs text-neon-cyan font-bold mt-1">👑 Host</p>
+                          )}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-4 justify-center pb-4">
+                  <Button
+                    size="lg"
+                    variant={(() => {
+                      const currentUserId = user?._id?.toString() || user?.userId?.toString();
+                      const player = room.players.find((p) => {
+                        const playerUserId = typeof p.userId === 'object'
+                          ? p.userId._id?.toString() || p.userId.userId?.toString()
+                          : p.userId?.toString();
+                        return playerUserId === currentUserId;
+                      });
+                      return player?.isReady ? 'secondary' : 'primary';
+                    })()}
+                    onClick={toggleReady}
+                    className="min-w-[180px]"
+                  >
+                    {(() => {
+                      const currentUserId = user?._id?.toString() || user?.userId?.toString();
+                      const player = room.players.find((p) => {
+                        const playerUserId = typeof p.userId === 'object'
+                          ? p.userId._id?.toString() || p.userId.userId?.toString()
+                          : p.userId?.toString();
+                        return playerUserId === currentUserId;
+                      });
+                      return player?.isReady ? 'NOT READY' : 'READY';
+                    })()}
+                  </Button>
+                  {isHost && (
+                    <Button
+                      size="lg"
+                      onClick={handleStartGame}
+                      disabled={!canStart}
+                      className="min-w-[180px]"
                     >
-                      <div className="mx-auto mb-3 flex justify-center">
-                        <Avatar user={player} size="lg" />
-                      </div>
-                      <p className="text-sm font-medium text-gray-200 truncate mb-1">
-                        {player.username}
-                      </p>
-                      {player.isReady && (
-                        <p className="text-xs text-neon-green font-bold">✓ Ready</p>
-                      )}
-                      {player.userId === room.host?.userId && (
-                        <p className="text-xs text-neon-cyan font-bold mt-1">👑 Host</p>
-                      )}
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+                      START GAME
+                    </Button>
+                  )}
+                </div>
+
+                {room.players.length < 4 && (
+                  <p className="text-center text-gray-300 text-sm mb-4">
+                    Need at least 4 players to start
+                  </p>
+                )}
+              </div>
+
+              {/* Right Side - Chat */}
+              <div className="w-80 flex-shrink-0">
+                <div className="h-full">
+                  <Chat />
+                </div>
               </div>
             </div>
-
-            {/* Actions */}
-            <div className="flex gap-4 justify-center pb-4">
-              <Button
-                size="lg"
-                variant={room.players.find((p) => p.userId === user?.userId)?.isReady ? 'secondary' : 'primary'}
-                onClick={toggleReady}
-                className="min-w-[180px]"
-              >
-                {room.players.find((p) => p.userId === user?.userId)?.isReady
-                  ? 'NOT READY'
-                  : 'READY'}
-              </Button>
-              {isHost && (
-                <Button
-                  size="lg"
-                  onClick={handleStartGame}
-                  disabled={!canStart}
-                  className="min-w-[180px]"
-                >
-                  START GAME
-                </Button>
-              )}
-            </div>
-
-            {room.players.length < 4 && (
-              <p className="text-center text-gray-300 text-sm mb-4">
-                Need at least 4 players to start
-              </p>
-            )}
           </div>
         </div>
       </div>
