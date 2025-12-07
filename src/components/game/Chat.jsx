@@ -17,6 +17,7 @@ export default function Chat() {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (input.trim()) {
+      console.log('Chat: Sending message:', input.trim());
       sendMessage(input.trim());
       setInput('');
       stopTyping();
@@ -46,29 +47,43 @@ export default function Chat() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 && (
+          <div className="text-center text-gray-500 text-sm py-8">
+            No messages yet. Start the conversation!
+          </div>
+        )}
         <AnimatePresence>
-          {messages.map((message, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={`flex ${message.userId === user?.userId ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-lg p-2 ${
-                  message.userId === user?.userId
-                    ? 'bg-neon-purple/20 text-white'
-                    : 'bg-dark-bg text-gray-300'
-                }`}
+          {messages.map((message, index) => {
+            // Handle both message structures: direct (userId) or nested (sender.userId)
+            const messageUserId = message.sender?.userId || message.userId;
+            const messageUsername = message.sender?.username || message.username || 'Unknown';
+            const messageText = message.message || message.text;
+            const currentUserId = user?._id?.toString() || user?.userId?.toString();
+            const isOwnMessage = messageUserId?.toString() === currentUserId;
+            
+            return (
+              <motion.div
+                key={message._id || index}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
               >
-                {message.userId !== user?.userId && (
-                  <p className="text-xs text-neon-cyan mb-1">{message.username}</p>
-                )}
-                <p className="text-sm">{message.message}</p>
-              </div>
-            </motion.div>
-          ))}
+                <div
+                  className={`max-w-[80%] rounded-lg p-2 ${
+                    isOwnMessage
+                      ? 'bg-neon-purple/20 text-white'
+                      : 'bg-dark-bg text-gray-300'
+                  }`}
+                >
+                  {!isOwnMessage && messageUsername && (
+                    <p className="text-xs text-neon-cyan mb-1">{messageUsername}</p>
+                  )}
+                  <p className="text-sm">{messageText}</p>
+                </div>
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
 
         {typingUsers.length > 0 && (

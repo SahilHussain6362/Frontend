@@ -260,14 +260,14 @@ export default function Dashboard() {
               >
                 CREATE ROOM
               </Button>
-              <Button
+              {/* <Button
                 size="lg"
                 variant="secondary"
                 className="w-full"
                 onClick={() => navigate('/lobby')}
               >
                 GO TO LOBBY
-              </Button>
+              </Button> */}
             </div>
           </div>
 

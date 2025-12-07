@@ -40,14 +40,22 @@ export const GameProvider = ({ children }) => {
     // Room events
     socketService.on('room_joined', (data) => {
       if (data.room) {
-        setRoom(data.room);
+        // Clear messages when joining a new room
+        setMessages([]);
+        setTypingUsers([]);
+        // Create a new object reference with new array references to ensure React detects the change
+        // This should include ALL current players in the room
+        setRoom({
+          ...data.room,
+          players: data.room.players ? [...data.room.players] : []
+        });
         try {
           localStorage.setItem('room', JSON.stringify(data.room));
         } catch (err) {
           console.error('Failed to persist room to localStorage', err);
         }
         audioService.play('click');
-        console.log('Room joined:', data.room.roomCode, 'Players:', data.room.players?.length);
+        console.log('Room joined via socket - socket is now in room:', data.room.roomCode, 'Players:', data.room.players?.length, 'Player list:', data.room.players?.map(p => p.username));
       }
     });
 
@@ -55,14 +63,41 @@ export const GameProvider = ({ children }) => {
       if (data.room) {
         // Always update room state when we receive room_updated event
         // This ensures all players see real-time updates
-        setRoom(data.room);
-        console.log('Room updated:', data.room.roomCode, 'Players:', data.room.players?.length);
+        // Create a new object reference with new array references to ensure React detects the change
+        setRoom({
+          ...data.room,
+          players: data.room.players ? [...data.room.players] : []
+        });
+        try {
+          localStorage.setItem('room', JSON.stringify(data.room));
+        } catch (err) {
+          console.error('Failed to persist room to localStorage', err);
+        }
+        console.log('Room updated:', data.room.roomCode, 'Players:', data.room.players?.length, 'Player list:', data.room.players?.map(p => p.username));
+      }
+    });
+
+    // Handle room state response if backend supports get_room_state
+    socketService.on('room_state', (data) => {
+      if (data.room) {
+        setRoom({
+          ...data.room,
+          players: data.room.players ? [...data.room.players] : []
+        });
+        try {
+          localStorage.setItem('room', JSON.stringify(data.room));
+        } catch (err) {
+          console.error('Failed to persist room to localStorage', err);
+        }
+        console.log('Room state received:', data.room.roomCode, 'Players:', data.room.players?.length);
       }
     });
 
     socketService.on('room_left', (data) => {
       setRoom(null);
       setGame(null);
+      setMessages([]);
+      setTypingUsers([]);
       try {
         localStorage.removeItem('room');
       } catch (err) {
@@ -87,11 +122,24 @@ export const GameProvider = ({ children }) => {
       // Update room state immediately if room data is provided
       // This ensures all players see the new player instantly
       if (data.room) {
-        setRoom(data.room);
+        // Create a new object reference with new array references to ensure React detects the change
+        setRoom({
+          ...data.room,
+          players: data.room.players ? [...data.room.players] : []
+        });
+        try {
+          localStorage.setItem('room', JSON.stringify(data.room));
+        } catch (err) {
+          console.error('Failed to persist room to localStorage', err);
+        }
         console.log('Room updated after player joined:', data.room.roomCode, 'Players:', data.room.players?.length);
+      } else if (room) {
+        // If room data not provided but we have a room, request an update
+        // This ensures we get the latest player list
+        console.log('player_joined event received without room data - requesting room update');
+        socketService.emit('get_room_state', { roomCode: room.roomCode });
       } else {
-        // If room data not provided, the backend should emit room_updated
-        // But we log a warning in case it doesn't
+        // If no room data and no local room, wait for room_updated
         console.warn('player_joined event received without room data - waiting for room_updated event');
       }
     });
@@ -101,10 +149,23 @@ export const GameProvider = ({ children }) => {
       // Update room state immediately if room data is provided
       // This ensures all players see the player removal instantly
       if (data.room) {
-        setRoom(data.room);
+        // Create a new object reference with new array references to ensure React detects the change
+        setRoom({
+          ...data.room,
+          players: data.room.players ? [...data.room.players] : []
+        });
+        try {
+          localStorage.setItem('room', JSON.stringify(data.room));
+        } catch (err) {
+          console.error('Failed to persist room to localStorage', err);
+        }
         console.log('Room updated after player left:', data.room.roomCode, 'Players:', data.room.players?.length);
+      } else if (room) {
+        // If room data not provided but we have a room, request an update
+        console.log('player_left event received without room data - requesting room update');
+        socketService.emit('get_room_state', { roomCode: room.roomCode });
       } else {
-        // If room data not provided, the backend should emit room_updated
+        // If no room data and no local room, wait for room_updated
         console.warn('player_left event received without room data - waiting for room_updated event');
       }
     });
@@ -212,11 +273,45 @@ export const GameProvider = ({ children }) => {
 
     socketService.on('error', (error) => {
       console.error('Socket error:', error);
+      // Show error to user if it's a chat-related error
+      if (error.message && typeof window !== 'undefined' && window.toast) {
+        window.toast.error(error.message);
+      }
     });
 
     // Chat events
     socketService.on('message_received', (data) => {
-      setMessages((prev) => [...prev, data.message]);
+      console.log('Message received event:', data);
+      if (data && data.message) {
+        const message = data.message;
+        console.log('Adding message to state:', message);
+        setMessages((prev) => {
+          // Remove any pending messages with the same content from the same user
+          const filtered = prev.filter(m => {
+            // Remove temporary/pending messages that match this confirmed message
+            if (m.isPending && m.sender?.userId?.toString() === message.sender?.userId?.toString() && m.message === message.message) {
+              return false;
+            }
+            return true;
+          });
+          
+          // Check if message already exists (prevent duplicates)
+          const exists = filtered.some(m => {
+            const mId = m._id?.toString() || m.id?.toString();
+            const msgId = message._id?.toString() || message.id?.toString();
+            return mId && msgId && mId === msgId;
+          });
+          
+          if (exists) {
+            console.log('Message already exists, skipping:', message._id);
+            return filtered;
+          }
+          
+          return [...filtered, message];
+        });
+      } else {
+        console.warn('Message received but data structure is invalid:', data);
+      }
     });
 
     socketService.on('typing_start', (data) => {
@@ -235,6 +330,7 @@ export const GameProvider = ({ children }) => {
       socketService.off('room_left');
       socketService.off('room_error');
       socketService.off('room_status');
+      socketService.off('room_state');
       socketService.off('player_joined');
       socketService.off('player_left');
       socketService.off('game_start');
@@ -272,21 +368,43 @@ export const GameProvider = ({ children }) => {
       if (token) {
         socketService.connect(token);
         // Wait for connection, then emit
-        const connectInterval = setInterval(() => {
-          if (socketService.connected) {
-            clearInterval(connectInterval);
-            console.log('Socket connected, joining room:', roomCode);
-            socketService.emit('join_room', { roomCode });
-          }
-        }, 100);
+        // Use a promise-based approach to ensure connection is ready
+        const waitForConnection = () => {
+          return new Promise((resolve, reject) => {
+            if (socketService.connected) {
+              resolve();
+              return;
+            }
+            
+            // Check if socket exists and listen for connect event
+            const checkInterval = setInterval(() => {
+              if (socketService.connected) {
+                clearInterval(checkInterval);
+                resolve();
+              }
+            }, 100);
 
-        // Timeout after 3 seconds
-        setTimeout(() => {
-          clearInterval(connectInterval);
-          if (!socketService.connected) {
-            console.error('Socket connection timeout');
-          }
-        }, 3000);
+            // Timeout after 5 seconds
+            setTimeout(() => {
+              clearInterval(checkInterval);
+              if (!socketService.connected) {
+                reject(new Error('Socket connection timeout'));
+              }
+            }, 5000);
+          });
+        };
+
+        waitForConnection()
+          .then(() => {
+            console.log('Socket connected, joining room:', roomCode);
+            // Small delay to ensure all listeners are registered
+            setTimeout(() => {
+              socketService.emit('join_room', { roomCode });
+            }, 100);
+          })
+          .catch((error) => {
+            console.error('Socket connection failed:', error);
+          });
       } else {
         console.error('No token available for socket connection');
       }
@@ -294,7 +412,10 @@ export const GameProvider = ({ children }) => {
     }
 
     console.log('Joining room via socket:', roomCode);
-    socketService.emit('join_room', { roomCode });
+    // Small delay to ensure all listeners are registered
+    setTimeout(() => {
+      socketService.emit('join_room', { roomCode });
+    }, 50);
   };
 
   // When leaving room locally, clear storage too
@@ -306,6 +427,8 @@ export const GameProvider = ({ children }) => {
     }
     setRoom(null);
     setGame(null);
+    setMessages([]);
+    setTypingUsers([]);
   };
 
   const leaveRoom = () => {
@@ -361,12 +484,58 @@ export const GameProvider = ({ children }) => {
     }
   };
 
-  const sendMessage = (message) => {
+  const sendMessage = (messageText) => {
     if (room || game) {
+      const roomCode = room?.roomCode || game?.roomId;
+      if (!roomCode) {
+        console.error('Cannot send message: No room code available', { room, game });
+        return;
+      }
+      
+      if (!socketService.connected) {
+        console.error('Cannot send message: Socket not connected. Attempting to connect...');
+        const token = localStorage.getItem('token');
+        if (token) {
+          socketService.connect(token);
+          // Wait a bit for connection, then retry
+          setTimeout(() => {
+            if (socketService.connected) {
+              socketService.emit('send_message', {
+                roomCode,
+                message: messageText,
+                messageType: 'chat',
+              });
+            } else {
+              console.error('Socket still not connected after retry');
+            }
+          }, 1000);
+        }
+        return;
+      }
+      
+      // Optimistic update - add message to local state immediately
+      const tempMessage = {
+        _id: `temp-${Date.now()}`,
+        sender: {
+          userId: user?._id || user?.userId,
+          username: user?.username || 'You',
+        },
+        message: messageText,
+        messageType: 'chat',
+        createdAt: new Date(),
+        isPending: true, // Mark as pending until confirmed by server
+      };
+      
+      setMessages((prev) => [...prev, tempMessage]);
+      
+      console.log('Sending message via socket:', { roomCode, message: messageText, socketConnected: socketService.connected });
       socketService.emit('send_message', {
-        roomCode: room?.roomCode || game?.roomId,
-        message,
+        roomCode,
+        message: messageText,
+        messageType: 'chat',
       });
+    } else {
+      console.error('Cannot send message: No room or game available', { room, game });
     }
   };
 
